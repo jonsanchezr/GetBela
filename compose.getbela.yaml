@@ -1,0 +1,223 @@
+# GetBela - GRUPO GETBELA
+#
+# Proyecto Compose PROPIO (`getbela`), independiente de `docker-windows`.
+# GetBela no toca ni depende del stack docker-windows: tiene su propio MySQL,
+# su propia red y sus propios puertos.
+#
+#   docker compose -f compose.getbela.yaml up -d
+#   docker compose -f compose.getbela.yaml ps
+#   docker compose -f compose.getbela.yaml logs -f
+#   docker compose -f compose.getbela.yaml down
+#
+# SERVICIOS
+#   mysql    MySQL 8.4 LTS: la base de datos de GetBela (base y user propios)
+#   backend  Laravel 13 + PHP 8.3 (nginx + php-fpm), API en el puerto 8000
+#   frontend React 19 + Vite 8, dev server en el puerto 5173
+#
+# El frontend (Vite) corre en 5173 y la API en 8000. El repo ya viene con
+# esa convencion hardcodeada:
+#
+#   frontend/src/api/axios.js  ->  baseURL: "http://localhost:8000"
+#   backend/config/cors.php    ->  allowed_origins: ['http://localhost:5173']
+#
+# Es decir: el navegador (en el host) entra por 5173 y llama a la API por 8000.
+# Ambos puertos se publican en 127.0.0.1 para que el host los alcance.
+#
+# NO hay proxy inverso ni entradas en el hosts file de Windows: se accede
+# directamente por http://127.0.0.1:5173 y http://127.0.0.1:8000.
+
+name: getbela
+
+services:
+  # ---------------------------------------------------------------------
+  # mysql : base de datos propia de GetBela
+  #
+  # MySQL 8.4 es la ultima version estable (LTS). Es independiente del
+  # MySQL 5.7 de docker-windows: este contenedor no comparte volumenes,
+  # redes ni credenciales con aquel stack.
+  # ---------------------------------------------------------------------
+
+  mysql:
+    image: mysql:8.4
+    container_name: getbela-mysql
+    hostname: mysql
+    restart: unless-stopped
+    command:
+      # Settings as command flags: a bind-mounted config file would be
+      # reported as world-writable (777) by Docker Desktop on Windows, and
+      # MySQL silently ignores world-writable config files.
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      # MySQL 8.4 removed the `default-authentication-plugin` variable: it
+      # aborts with "unknown variable" and the server never starts. In 8.4 the
+      # legacy plugin is enabled with its own flag instead.
+      #
+      # caching_sha2_password (the 8.4 default) is not supported by the
+      # pdo_mysql build of PHP 8.3 used by the Laravel client, so
+      # mysql_native_password is enabled explicitly.
+      - --mysql-native-password=ON
+      - --explicit-defaults-for-timestamp=1
+      - --max-allowed-packet=64M
+      - --max-connections=200
+      - --slow-query-log=1
+      - --long-query-time=2
+    environment:
+      MYSQL_ROOT_PASSWORD: ${GETBELA_MYSQL_ROOT_PASSWORD:?GETBELA_MYSQL_ROOT_PASSWORD is required}
+      MYSQL_DATABASE: ${GETBELA_DB_DATABASE:-getbela}
+      MYSQL_USER: ${GETBELA_DB_USERNAME:-getbela}
+      MYSQL_PASSWORD: ${GETBELA_DB_PASSWORD:?GETBELA_DB_PASSWORD is required}
+      TZ: ${TZ:-America/Santiago}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - mysql-logs:/var/log/mysql
+      # SQL scripts here run once, on first initialization of an empty datadir.
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      getbela:
+        aliases:
+          - mysql
+          - db
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  # ---------------------------------------------------------------------
+  # backend : API Laravel 13 (PHP 8.3 + nginx + php-fpm)
+  #
+  # La imagen es propia del grupo: el stack docker-windows usa PHP 8.2 con
+  # Laravel 9, y este repo pide PHP ^8.3 con Laravel 13.
+  #
+  # El codigo viene por bind mount desde ./GetBela/sitio-web/GetBela-App/backend
+  # asi que los cambios en PHP se ven de inmediato.
+  # ---------------------------------------------------------------------
+
+  backend:
+    build:
+      context: ./docker/backend
+      dockerfile: Dockerfile
+    image: getbela/backend:dev
+    container_name: getbela-backend
+    hostname: backend
+    restart: unless-stopped
+    init: true
+    entrypoint: ["/bin/bash", "/usr/local/bin/entrypoint.sh"]
+    # The `command` is mandatory: without it the entrypoint receives an empty
+    # list and `exec "$@"` starts nothing (the container enters a restart loop).
+    command: ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
+    ports:
+      # The API port. The frontend on the host calls http://localhost:8000.
+      - "127.0.0.1:8000:80"
+    volumes:
+      # Application source. Read-write is required by Laravel for compiled
+      # views, the file cache and the logs.
+      - ./GetBela/sitio-web/GetBela-App/backend:/var/www/html
+      - ./docker/backend/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
+    environment:
+      APP_NAME: GetBela
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:8000
+      LOG_CHANNEL: stack
+      LOG_LEVEL: debug
+      CACHE_STORE: file
+      SESSION_DRIVER: file
+      SESSION_LIFETIME: 120
+      QUEUE_CONNECTION: sync
+      FILESYSTEM_DISK: local
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_DATABASE: ${GETBELA_DB_DATABASE:-getbela}
+      DB_USERNAME: ${GETBELA_DB_USERNAME:-getbela}
+      DB_PASSWORD: ${GETBELA_DB_PASSWORD:?GETBELA_DB_PASSWORD is required}
+      # The React SPA runs on 5173 and calls the API on 8000. Both spellings
+      # of the loopback host are listed: the browser sends one or the other
+      # depending on how the page was opened, and a mismatch fails every API
+      # call with a CORS error.
+      CORS_ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+      # Sanctum stateful domains, for the SPA session cookies.
+      SANCTUM_STATEFUL_DOMAINS: localhost:5173,127.0.0.1:5173
+      MAIL_MAILER: log
+      MAIL_FROM_ADDRESS: hello@example.com
+      MAIL_FROM_NAME: ${APP_NAME:-GetBela}
+      TZ: ${TZ:-America/Santiago}
+    networks:
+      getbela:
+        aliases:
+          - backend
+          - backend.docker
+    healthcheck:
+      # Laravel's own health route (/up), registered in bootstrap/app.php.
+      # `--spider` does not follow redirects and fails on a 404 or a dead
+      # service, which is exactly what we want to measure.
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1/up || exit 1"]
+      interval: 15s
+      timeout: 15s
+      retries: 5
+      start_period: 60s
+
+  # ---------------------------------------------------------------------
+  # frontend : React 19 + Vite 8 (dev server)
+  #
+  # The Vite dev server, so the React app hot-reloads on save. It binds to
+  # 0.0.0.0 inside the container (the default) so the published host port
+  # can reach it.
+  #
+  # The source is bind-mounted from
+  # ./GetBela/sitio-web/GetBela-App/frontend
+  # ---------------------------------------------------------------------
+
+  frontend:
+    build:
+      context: ./docker/frontend
+      dockerfile: Dockerfile
+    image: getbela/frontend:dev
+    container_name: getbela-frontend
+    hostname: frontend
+    restart: unless-stopped
+    init: true
+    working_dir: /app
+    # The entrypoint is explicit: the image's own ENTRYPOINT (docker-entrypoint.sh)
+    # would otherwise take over and the `command` would be executed directly,
+    # skipping the dependency install. The script receives the command as "$@".
+    entrypoint: ["/bin/bash", "/usr/local/bin/entrypoint.sh"]
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    ports:
+      # The Vite dev server. The browser enters here.
+      - "127.0.0.1:5173:5173"
+    volumes:
+      # Application source. The node_modules directory is an anonymous
+      # volume so the container's own installation is used instead of the
+      # host's (different platform, different binaries).
+      - ./GetBela/sitio-web/GetBela-App/frontend:/app
+      - frontend-node-modules:/app/node_modules
+    environment:
+      TZ: ${TZ:-America/Santiago}
+    networks:
+      getbela:
+        aliases:
+          - frontend
+          - frontend.docker
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:5173/ || exit 1"]
+      interval: 15s
+      timeout: 15s
+      retries: 5
+      start_period: 60s
+
+networks:
+  # The group's own network. Owned and created by this project only.
+  getbela:
+    name: getbela
+    driver: bridge
+
+volumes:
+  mysql-data:
+    name: getbela-mysql-data
+  mysql-logs:
+    name: getbela-mysql-logs
+  frontend-node-modules:
+    name: getbela-frontend-node-modules

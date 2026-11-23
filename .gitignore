@@ -1,0 +1,15 @@
+# Secretos: nunca se versionan.
+.env
+
+# El codigo clonado del repo tampoco se versiona desde este repo de infra.
+app/
+
+# El codigo de la aplicacion en su ubicacion local (Docker Desktop).
+# En produccion el codigo llega clonado en ./app, no en ./GetBela.
+GetBela/
+
+# Artefactos locales.
+*.tar
+*.tar.gz
+.DS_Store
+Thumbs.db
