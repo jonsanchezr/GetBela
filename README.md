@@ -41,9 +41,26 @@ GetBela/
 
 | Servicio  | Stack                       | Puerto interno | Rol                                  |
 | --------- | --------------------------- | -------------- | ------------------------------------ |
-| `mysql`   | MySQL 8.4 LTS               | 3306           | Base de datos propia del grupo       |
+| `mysql`   | MySQL 8.0 LTS (Debian)       | 3306           | Base de datos propia del grupo       |
 | `backend` | Laravel 13, PHP 8.3, nginx  | 80              | API REST en `/api/*`                 |
-| `frontend`| React 19 + Vite 8           | 80              | SPA (dev-server en desarrollo)       |
+| `frontend`| React 19 + Vite 8 (build)    | 80              | SPA servida con nginx                |
+
+### Nota sobre la imagen de MySQL
+
+Se usa **`mysql:8.0-debian`**, no `mysql:8.4` ni `mysql:8.0` (glibc).
+
+MySQL 8.4 y 8.0 compilados contra glibc exigen una CPU **x86-64-v2** (SSE4.2 y
+POPCNT) y abortan al arrancar con:
+
+```
+Fatal glibc error: CPU does not support x86-64-v2
+```
+
+La build Debian de 8.0 está compilada con un baseline más bajo y funciona en
+servidores con CPU emulada básica. El flag de autenticación también difiere
+entre versiones: 8.0 usa `--default-authentication-plugin`, mientras que
+8.4 lo reemplazó por `--mysql-native-password=ON`.
+
 
 ## Desarrollo (Docker Desktop)
 
@@ -115,6 +132,24 @@ docker compose -f compose.getbela.prod.yaml up -d --build
    trace al navegador.
 5. `CORS_ALLOWED_ORIGINS` y `SANCTUM_STATEFUL_DOMAINS` apuntan al dominio
    real, no a `localhost:5173`.
+6. El frontend se compila con `VITE_API_URL` **vacío**: el código llama a la
+   API con el prefijo ya incluido (`api.get("/api/public/services")`), así
+   que una base `/api` produciría `/api/api/public/services`.
+
+### Enrutamiento en Traefik
+
+El frontend y el backend comparten el dominio y se reparten por prefijo:
+
+| Prefijo               | Servicio  |
+| --------------------- | --------- |
+| `/api/*`              | `backend` |
+| `/sanctum/*`          | `backend` |
+| `/storage/*`          | `backend` |
+| todo lo demás         | `frontend`|
+
+La regla del frontend excluye explícitamente esos prefijos. Sin la
+exclusión, su regla (`Host(...)`) se quedaría también con las peticiones de
+la API y respondería con el `index.html` de la SPA en vez del JSON.
 
 ### Seeds
 
@@ -122,6 +157,27 @@ El backend corre las migraciones en cada arranque. Los seeds (categorías,
 super admin, negocios de prueba con sus dueños, empleados y servicios) se
 ejecutan solo si la tabla `businesses` está vacía, y se pueden desactivar
 con `GETBELA_RUN_SEEDS=false` en el `.env`.
+
+Credenciales del admin que crea el seed: `admin@getbela.com` / `password123`.
+
+### Actualizar el código
+
+```bash
+cd /opt/getbela/app && git pull
+cd /opt/getbela
+chown -R 1000:1000 app/backend
+docker compose -f compose.getbela.prod.yaml up -d --build
+```
+
+El `chown` es necesario: el contenedor backend corre como uid 1000 y el
+`git pull` deja el código con el owner del repositorio, lo que impide crear
+el `.env` y el `vendor/` de composer dentro del contenedor.
+
+### Arranque tras un reinicio
+
+Los tres servicios declaran `restart: unless-stopped`, así que Docker los
+levanta solo. No hace falta ningún servicio adicional.
+
 
 ## Comandos utiles
 
