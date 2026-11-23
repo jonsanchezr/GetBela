@@ -139,8 +139,33 @@ mkdir -p "${APP_DIR}/backend/storage/framework/cache/data" \
          "${APP_DIR}/backend/storage/logs" \
          "${APP_DIR}/backend/storage/app/public" \
          "${APP_DIR}/backend/bootstrap/cache"
+
+# -----------------------------------------------------------------------------
+# Ownership del codigo
+#
+# El contenedor backend corre como hostuser (uid 1000). El codigo clonado
+# queda en root:root (el usuario del repositorio), y con el bind mount el
+# contenedor no puede crear el .env ni el vendor/ de composer: falla con
+# "Permission denied" y entra en loop de reinicio.
+#
+# Se cambia el owner del codigo a 1000:1000, que es el uid del contenedor.
+# -----------------------------------------------------------------------------
+if getent group hostgroup >/dev/null 2>&1; then
+  GRP=hostgroup
+else
+  GRP=root
+fi
+
+log "Ajustando ownership del codigo a 1000:${GRP}"
+chown -R 1000:"${GRP}" "${APP_DIR}/backend" 2>/dev/null \
+  || warn "No se pudo ajustar el ownership de ${APP_DIR}/backend"
+
 chmod -R 777 "${APP_DIR}/backend/storage" "${APP_DIR}/backend/bootstrap/cache" 2>/dev/null \
   || warn "No se pudieron ajustar los permisos (revisar ownership)"
+
+# El directorio raiz del codigo tambien: el contenedor crea .env y vendor/ ahi.
+chmod 775 "${APP_DIR}/backend" 2>/dev/null || true
+chmod 666 "${APP_DIR}/backend/.env.example" 2>/dev/null || true
 
 log ""
 log "Bootstrap completado."

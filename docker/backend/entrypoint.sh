@@ -65,7 +65,12 @@ wait_for "${DB_HOST}" "${DB_PORT}" "MySQL" || err "MySQL no responde en ${DB_HOS
 # -----------------------------------------------------------------------------
 if [ ! -f .env ]; then
   log "No hay .env: se crea desde .env.example"
-  cp .env.example .env
+  # `cp -f`: el archivo de destino puede existir y ser de otro owner, en cuyo
+  # caso un `cp` sin -f falla con "Permission denied" y, con `set -e`, aborta
+  # el contenedor antes de llegar a las migraciones.
+  cp -f .env.example .env 2>/dev/null \
+    || { err "No se pudo crear el .env"; exit 1; }
+  chmod 644 .env 2>/dev/null || true
 else
   log ".env encontrado: se conserva"
 fi
