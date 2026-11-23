@@ -31,7 +31,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 
-APP_REPO_URL="${GETBELA_APP_REPO_URL:-https://github.com/grodriguez-dev/GetBela-App.git}"
+APP_REPO_URL="${GETBELA_APP_REPO_URL:-https://github.com/jonsanchezr/GetBela-App.git}"
 APP_REPO_BRANCH="${GETBELA_APP_REPO_BRANCH:-main}"
 APP_DIR="${SCRIPT_DIR}/app"
 
