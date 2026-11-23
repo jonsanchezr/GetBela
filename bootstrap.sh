@@ -61,8 +61,14 @@ else
   log "Generando .env con secretos nuevos"
 
   # Contraseñas aleatorias: 32 caracteres alfanumericos.
+  #
+  # No se usa `tr -dc ... | head -c N`: `head` cierra el pipe al llegar al
+  # limite y `tr` recibe SIGPIPE, que con `set -o pipefail` hace fallar todo
+  # el script. Se lee un bloque con `head -c` (sin pipe) y se filtra despues.
   random_secret() {
-    tr -dc 'A-Za-z0-9' </dev/urandom | head -c "${1:-32}"
+    local len="${1:-32}" raw
+    raw="$(head -c "$(( len * 2 ))" /dev/urandom)"
+    printf '%s' "${raw}" | tr -dc 'A-Za-z0-9' | cut -c1-"${len}"
   }
 
   MYSQL_ROOT_PW="$(random_secret 32)"
