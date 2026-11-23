@@ -170,9 +170,14 @@ services:
       MAIL_FROM_ADDRESS: hello@example.com
       MAIL_FROM_NAME: ${APP_NAME:-GetBela}
       TZ: ${TZ:-America/Santiago}
-      # Corre los seeds (datos de prueba) en el arranque. Se desactiva con
-      # GETBELA_RUN_SEEDS=false cuando la base ya tiene datos de prueba.
+      # Corre los seeds en el arranque. Se desactiva con
+      # GETBELA_RUN_SEEDS=false cuando la base ya tiene datos.
       GETBELA_RUN_SEEDS: ${GETBELA_RUN_SEEDS:-true}
+      # Datos de la cuenta super administradora. El seeder los usa para
+      # crearla: la password viene del .env del grupo, nunca de una
+      # constante en el codigo.
+      GETBELA_ADMIN_EMAIL: ${GETBELA_ADMIN_EMAIL:-admin@getbela.com}
+      GETBELA_ADMIN_PASSWORD: ${GETBELA_ADMIN_PASSWORD:?GETBELA_ADMIN_PASSWORD is required}
     networks:
       getbela:
         aliases:

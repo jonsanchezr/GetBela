@@ -73,6 +73,7 @@ else
 
   MYSQL_ROOT_PW="$(random_secret 32)"
   DB_PW="$(random_secret 24)"
+  ADMIN_PW="$(random_secret 24)"
 
   cat > .env <<EOF
 # =============================================================================
@@ -91,9 +92,13 @@ GETBELA_DB_PASSWORD=${DB_PW}
 # Zona horaria de los contenedores
 TZ=America/Santiago
 
-# Correr los seeds (datos de prueba) en el arranque del backend.
-# Poner en false cuando la base ya tenga datos y no se quiera re-sembrar.
+# Correr los seeds (categorias y super administrador) en el arranque del
+# backend. Poner en false cuando la base ya tenga los datos.
 GETBELA_RUN_SEEDS=true
+
+# Cuenta super administradora. El password se genera aqui y no se versiona.
+GETBELA_ADMIN_EMAIL=admin@getbela.com
+GETBELA_ADMIN_PASSWORD=${ADMIN_PW}
 EOF
 
   chmod 600 .env

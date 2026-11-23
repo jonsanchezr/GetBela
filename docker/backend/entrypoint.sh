@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # =============================================================================
 # Entrypoint del contenedor backend de GetBela (getbela-backend).
 #
@@ -177,32 +177,36 @@ log "Corriendo migraciones"
 php artisan migrate --force --no-interaction || err "Las migraciones fallaron (el contenedor sigue arriba)"
 
 # -----------------------------------------------------------------------------
-# 6b. Seeds (datos de prueba)
+# 6b. Seeds
 #
-# GETBELA_RUN_SEEDS=true corre el DatabaseSeeder, que delega en
-# DemoDataSeeder (categorias, super admin, negocios de prueba con duenos,
-# empleados y servicios).
+# GETBELA_RUN_SEEDS=true corre el DatabaseSeeder. Segun el ambiente:
 #
-# Los seeds se saltan si la base YA tiene negocios: son idempotentes a
+#   - produccion (APP_ENV=production): InitialSetupSeeder, que crea las
+#     categorias y la cuenta super administradora. Sin datos de prueba.
+#   - otros ambientes: DemoDataSeeder, que ademas crea los negocios de
+#     prueba con sus duenos, empleados y servicios.
+#
+# Los seeds se saltan si la base YA tiene usuarios: son idempotentes a
 # nivel de esquema pero no deben duplicar datos en cada reinicio del
-# contenedor. El chequeo es por la tabla `businesses`, que el seeder crea.
+# contenedor. El chequeo es por la tabla `users`, que es la que ambos
+# seeders garantizan.
 #
 # Con GETBELA_RUN_SEEDS=false (o ausente) los seeds no se corren.
 # -----------------------------------------------------------------------------
 if [ "${GETBELA_RUN_SEEDS:-false}" = "true" ]; then
-  log "Verificando si ya hay datos de prueba"
+  log "Verificando si ya hay datos"
   SEEDED=$(php artisan tinker --execute='
     try {
-        echo \Illuminate\Support\Facades\DB::table("businesses")->count();
+        echo \Illuminate\Support\Facades\DB::table("users")->count();
     } catch (\Throwable $e) {
         echo "0";
     }
 ' 2>/dev/null | tr -dc '0-9' || echo "0")
 
   if [ "${SEEDED:-0}" -gt 0 ]; then
-    log "La base ya tiene ${SEEDED} negocio(s): no se corren los seeds"
+    log "La base ya tiene ${SEEDED} usuario(s): no se corren los seeds"
   else
-    log "Corriendo seeds (datos de prueba)"
+    log "Corriendo seeds"
     php artisan db:seed --force --no-interaction || warn "Los seeds fallaron (el contenedor sigue arriba)"
   fi
 else
