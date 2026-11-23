@@ -65,6 +65,9 @@ else
   # No se usa `tr -dc ... | head -c N`: `head` cierra el pipe al llegar al
   # limite y `tr` recibe SIGPIPE, que con `set -o pipefail` hace fallar todo
   # el script. Se lee un bloque con `head -c` (sin pipe) y se filtra despues.
+  #
+  # Solo alfanumericos: los secretos van entre comillas simples en el .env
+  # y una comilla simple adentro romperia el quoting.
   random_secret() {
     local len="${1:-32}" raw
     raw="$(head -c "$(( len * 2 ))" /dev/urandom)"
@@ -75,19 +78,25 @@ else
   DB_PW="$(random_secret 24)"
   ADMIN_PW="$(random_secret 24)"
 
+  # Los secretos se escriben entre comillas simples para que un caracter
+  # especial (&, $, #, ...) no rompa el `source` de bash ni la interpolacion
+  # de compose. El alfabeto aleatorio excluye la propia comilla simple.
   cat > .env <<EOF
 # =============================================================================
 # GetBela - secretos del grupo (produccion)
 #
 # Generado por bootstrap.sh el $(date -u +%Y-%m-%dT%H:%M:%SZ)
 # NO versionar este archivo.
+#
+# Los valores van entre comillas simples: un caracter especial sin comillas
+# rompe el `source` de bash y la interpolacion de compose.
 # =============================================================================
 
 # MySQL
-GETBELA_MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PW}
+GETBELA_MYSQL_ROOT_PASSWORD='${MYSQL_ROOT_PW}'
 GETBELA_DB_DATABASE=getbela
 GETBELA_DB_USERNAME=getbela
-GETBELA_DB_PASSWORD=${DB_PW}
+GETBELA_DB_PASSWORD='${DB_PW}'
 
 # Zona horaria de los contenedores
 TZ=America/Santiago
@@ -98,7 +107,7 @@ GETBELA_RUN_SEEDS=true
 
 # Cuenta super administradora. El password se genera aqui y no se versiona.
 GETBELA_ADMIN_EMAIL=admin@getbela.com
-GETBELA_ADMIN_PASSWORD=${ADMIN_PW}
+GETBELA_ADMIN_PASSWORD='${ADMIN_PW}'
 EOF
 
   chmod 600 .env
