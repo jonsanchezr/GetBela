@@ -15,13 +15,22 @@
 # ARGUMENTOS DE BUILD
 #
 # VITE_API_URL es la URL base de la API que el frontend compila dentro del
-# bundle. En produccion la API vive bajo el prefijo /api del mismo dominio,
-# asi que el valor es "/api" (ruta relativa). Con ruta relativa el navegador
-# no necesita CORS y las cookies de sesion son de primer origen.
+# bundle.
+#
+# En produccion se deja VACIO: el frontend y la API comparten el dominio
+# (https://getbela.syrexsoftware.com), y las rutas del codigo ya incluyen
+# el prefijo /api (por ejemplo api.get("/api/public/services")). Con la base
+# vacia axios resuelve contra el dominio actual y el resultado es
+# /api/public/services, que es la ruta que sirve el backend.
+#
+# Un valor "/api" produciria /api/api/public/services: el prefijo duplicado.
+#
+# Con la base relativa el navegador no necesita CORS y las cookies de sesion
+# son de primer origen.
 # -----------------------------------------------------------------------------
 FROM node:22-alpine AS build
 
-ARG VITE_API_URL=/api
+ARG VITE_API_URL=
 ENV VITE_API_URL=${VITE_API_URL}
 
 WORKDIR /app

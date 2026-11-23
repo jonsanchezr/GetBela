@@ -221,8 +221,10 @@ services:
       context: .
       dockerfile: docker/frontend/Dockerfile.prod
       args:
-        # La API vive bajo el prefijo /api del mismo dominio: ruta relativa.
-        VITE_API_URL: "/api"
+        # La base de la API se deja vacia: el frontend y la API comparten el
+        # dominio, y las rutas del codigo ya incluyen el prefijo /api. Con
+        # "/api" se produciria /api/api/... (prefijo duplicado).
+        VITE_API_URL: ""
     image: getbela/frontend:prod
     container_name: getbela-frontend
     hostname: frontend
