@@ -178,6 +178,18 @@ services:
         aliases:
           - backend
           - backend.docker
+      # Red de Dokploy: es la que Traefik usa para enrutar los dominios.
+      # El servicio se publica en las dos redes, igual que hace Dokploy con
+      # sus propios composes.
+      dokploy-network:
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: dokploy-network
+      traefik.http.routers.getbela-backend.rule: Host(`getbela.syrexsoftware.com`) && PathPrefix(`/api`) || Host(`getbela.syrexsoftware.com`) && PathPrefix(`/sanctum`) || Host(`getbela.syrexsoftware.com`) && PathPrefix(`/storage`)
+      traefik.http.routers.getbela-backend.entrypoints: websecure
+      traefik.http.routers.getbela-backend.tls.certresolver: letsencrypt
+      traefik.http.routers.getbela-backend.service: getbela-backend
+      traefik.http.services.getbela-backend.loadbalancer.server.port: "80"
     # Puerto interno del nginx del contenedor. Traefik enruta hacia aca.
     expose:
       - "80"
@@ -220,6 +232,21 @@ services:
         aliases:
           - frontend
           - frontend.docker
+      # Red de Dokploy: es la que Traefik usa para enrutar los dominios.
+      dokploy-network:
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: dokploy-network
+      # El frontend sirve la SPA en la raiz. Las rutas /api, /sanctum y
+      # /storage las toma el backend, asi que se excluyen de forma explicita:
+      # sin esto, este router (que matchea cualquier Host) se quedaria con
+      # las peticiones de la API y responderia con el index.html de la SPA
+      # en lugar de la respuesta JSON.
+      traefik.http.routers.getbela-frontend.rule: Host(`getbela.syrexsoftware.com`) && !PathPrefix(`/api`) && !PathPrefix(`/sanctum`) && !PathPrefix(`/storage`)
+      traefik.http.routers.getbela-frontend.entrypoints: websecure
+      traefik.http.routers.getbela-frontend.tls.certresolver: letsencrypt
+      traefik.http.routers.getbela-frontend.service: getbela-frontend
+      traefik.http.services.getbela-frontend.loadbalancer.server.port: "80"
     expose:
       - "80"
     healthcheck:
@@ -234,6 +261,15 @@ networks:
   getbela:
     name: getbela
     driver: bridge
+  # Red de Dokploy (Swarm). Traefik la usa para enrutar los dominios, asi que
+  # el frontend y el backend tienen que estar en ella.
+  #
+  # Se declara como externa porque la crea y administra Dokploy: este compose
+  # solo se conecta. Si no existiera, habria que crearla antes con
+  # `docker network create dokploy-network`.
+  dokploy-network:
+    external: true
+    name: dokploy-network
 
 volumes:
   mysql-data:
